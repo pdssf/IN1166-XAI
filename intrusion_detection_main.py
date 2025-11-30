@@ -18,14 +18,15 @@ Steps performed in code:    - Read in train and test sets (Most of this done in 
 
 
 
-import os
-os.chdir(' ')              	# location where files are stored (main + utility)
-save_loc = ' '    			# location to save results
-data_loc = ' '              # location of dataset
+
+# Defina os caminhos corretos para salvar e carregar arquivos
+save_loc = './data'         # local para salvar resultados
+data_loc = './data/'        # local do dataset
 
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
+
 import xgboost
 import tensorflow as tf
 import shap
@@ -58,7 +59,9 @@ res_pca = pickle.load(open("{}/data_2.pkl".format(save_loc), "rb"))
 data_kdd = utf.read_KDD(data_loc) 
 
 # train model using default settings of XGBoost 
-model = xgboost.XGBClassifier(use_label_encoder=False, objective="binary:logistic", seed= 10) 
+
+# O parâmetro 'use_label_encoder' foi depreciado em versões recentes do xgboost, mas mantido para compatibilidade
+model = xgboost.XGBClassifier(use_label_encoder=False, objective="binary:logistic", seed=10)
 model.fit(data_kdd['X_train'], data_kdd['Y_train_bin'])
 
 # compute performance statistics of the model, store in 'results_model' object
