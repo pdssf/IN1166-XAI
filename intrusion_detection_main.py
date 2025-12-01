@@ -175,7 +175,7 @@ if (results_AE_SHAP is None) or (history_AE_SHAP is None) or (autoencoder_shap i
     # SAVE DATA
     pickle.dump(results_model, open("{}/data_0.pkl".format(save_loc), "wb")) 
     pickle.dump([results_AE_SHAP, history_AE_SHAP], open("{}/data_1.pkl".format(save_loc), "wb")) 
-    autoencoder_shap.full.save_weights('{}AE_shap_weights'.format(save_loc))
+    autoencoder_shap.full.save_weights('{}/AE_shap_weights'.format(save_loc))
     
     # z = autoencoder_shap.full.predict(results_AE_SHAP['shap_test_scaled'])
     # z.min()
