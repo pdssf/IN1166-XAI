@@ -1,0 +1,19 @@
+name: shapenv
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10
+  - pip
+  - numpy=1.23.5
+  - pandas=1.5.3
+  - scikit-learn=1.2.2
+  - scipy=1.10.1
+  - matplotlib
+  - xgboost=1.7.6
+  - jupyterlab
+  - seaborn=0.12.2
+
+  - pip:
+    - shap==0.44.1

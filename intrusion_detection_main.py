@@ -18,10 +18,10 @@ Steps performed in code:    - Read in train and test sets (Most of this done in 
 
 
 
-
-# Defina os caminhos corretos para salvar e carregar arquivos
-save_loc = './data'         # local para salvar resultados
-data_loc = './data/'        # local do dataset
+import os
+os.chdir('./')              	# location where files are stored (main + utility)
+save_loc = './results'    			# location to save results
+data_loc = './data/'              # location of dataset
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -42,10 +42,6 @@ tf.random.set_seed(10)
 """ *********************************** LOAD DATA (If code previously ran) ********************************** """
 """
 
-data_kdd = pickle.load(open("{}/data_nsl.pkl".format(save_loc), "rb"))
-results_model = pickle.load(open("{}/data_0.pkl".format(save_loc), "rb"))
-model = pickle.load(open("{}/model.pkl".format(save_loc), "rb"))
-
 results_AE_SHAP, history_AE_SHAP = pickle.load(open("{}/data_1.pkl".format(save_loc), "rb"))
 autoencoder_shap = utf.Autoencoder(results_AE_SHAP['x_data'].shape[1], results_AE_SHAP['best_params'][2], results_AE_SHAP['best_params'][3]) # create the AE model object
 autoencoder_shap.full.load_weights('{}/AE_shap_weights'.format(save_loc)); 
@@ -55,41 +51,51 @@ res_pca = pickle.load(open("{}/data_2.pkl".format(save_loc), "rb"))
 """
 """ ******************************************************************************** """
 
-# read in dataset, save train/test sets into data object, NB Y:Normal=0, Y:ATTACK=1
-data_kdd = utf.read_KDD(data_loc) 
+try:
+    data_kdd = pickle.load(open("{}/data_nsl.pkl".format(save_loc), "rb"))
+    results_model = pickle.load(open("{}/data_0.pkl".format(save_loc), "rb"))
+    model = pickle.load(open("{}/model.pkl".format(save_loc), "rb"))
+except:
+    data_kdd = None
+    results_model = None
+    model = None    
 
-# train model using default settings of XGBoost 
+if (data_kdd is  None) or (results_model is None) or (model is None):
+    # read in dataset, save train/test sets into data object, NB Y:Normal=0, Y:ATTACK=1
+    data_kdd = utf.read_KDD(data_loc) 
+    # train model using default settings of XGBoost 
+    model = xgboost.XGBClassifier(objective="binary:logistic", seed=10)
+    model.fit(data_kdd['X_train'], data_kdd['Y_train_bin'])
 
-# O parâmetro 'use_label_encoder' foi depreciado em versões recentes do xgboost, mas mantido para compatibilidade
-model = xgboost.XGBClassifier(use_label_encoder=False, objective="binary:logistic", seed=10)
-model.fit(data_kdd['X_train'], data_kdd['Y_train_bin'])
+    # compute performance statistics of the model, store in 'results_model' object
+    results_model = {}
+    results_model['y_pred_train'] = model.predict(data_kdd['X_train'])
+    results_model['y_pred_test'] = model.predict(data_kdd['X_test'])
+    results_model['y_pred_test_21'] = model.predict(data_kdd['X_test_21'])
 
-# compute performance statistics of the model, store in 'results_model' object
-results_model = {}
-results_model['y_pred_train'] = model.predict(data_kdd['X_train'])
-results_model['y_pred_test'] = model.predict(data_kdd['X_test'])
-results_model['y_pred_test_21'] = model.predict(data_kdd['X_test_21'])
+    results_model['performance_model_train'] = utf.compute_performance_stats(data_kdd['Y_train_bin'], results_model['y_pred_train'])
+    results_model['performance_model_test'] = utf.compute_performance_stats(data_kdd['Y_test_bin'], results_model['y_pred_test'])
+    results_model['performance_model_test_21'] = utf.compute_performance_stats(data_kdd['Y_test_bin_21'], results_model['y_pred_test_21'])
+    # calculate how many new attacks the XGBoost model can identify, NB during deployment, we have no way of knowing these are new attacks
+    z = np.zeros(len(data_kdd['Y_test_bin']),)
+    z[data_kdd['new_attack_locs']] = 1
+    temp = np.multiply(z, results_model['y_pred_test'])
+    results_model['num_new_attacks_detected'] =   np.sum(temp)                                      # correctly identified 1297 new attacks (TP)
+    results_model['TPR_new_attacks'] = np.round(np.sum(temp)/len(data_kdd['new_attack_locs']) , 2)  # i.e., correctly identified 35% of new attacks (TPR)
+    
+    # SAVE DATA 
+    pickle.dump(data_kdd, open("{}/data_nsl.pkl".format(save_loc), "wb")) 
+    pickle.dump(model, open("{}/model.pkl".format(save_loc), "wb"))
+    pickle.dump(results_model, open("{}/data_0.pkl".format(save_loc), "wb"))
 
-results_model['performance_model_train'] = utf.compute_performance_stats(data_kdd['Y_train_bin'], results_model['y_pred_train'])
-results_model['performance_model_test'] = utf.compute_performance_stats(data_kdd['Y_test_bin'], results_model['y_pred_test'])
-results_model['performance_model_test_21'] = utf.compute_performance_stats(data_kdd['Y_test_bin_21'], results_model['y_pred_test_21'])
-
-# SAVE DATA 
-pickle.dump(data_kdd, open("{}/data_nsl.pkl".format(save_loc), "wb")) 
-pickle.dump(model, open("{}/model.pkl".format(save_loc), "wb"))
-
-# calculate how many new attacks the XGBoost model can identify, NB during deployment, we have no way of knowing these are new attacks
-z = np.zeros(len(data_kdd['Y_test_bin']),)
-z[data_kdd['new_attack_locs']] = 1
-temp = np.multiply(z, results_model['y_pred_test'])
-results_model['num_new_attacks_detected'] =   np.sum(temp)                                      # correctly identified 1297 new attacks (TP)
-results_model['TPR_new_attacks'] = np.round(np.sum(temp)/len(data_kdd['new_attack_locs']) , 2)  # i.e., correctly identified 35% of new attacks (TPR)
 
 
 """ ************************* Create AutoEncoder based on SHAP data **************************** """
 # compute SHAP values of model across train and test sets
+xtrain_subset = shap.sample(data_kdd['X_train'], 100)  # use a subset of training data to estimate the background distribution for SHAP
+
 results_AE_SHAP = {}
-explainer = shap.TreeExplainer(model, data_kdd['X_train'], feature_perturbation = "interventional", model_output='probability') # NB output='probability' decomposes inputs among Pr(Y=1='Attack'|X)
+explainer = shap.TreeExplainer(model, xtrain_subset, feature_perturbation = "interventional", model_output='probability') # NB output='probability' decomposes inputs among Pr(Y=1='Attack'|X)
 results_AE_SHAP['shap_train'] = explainer.shap_values(data_kdd['X_train'])
 results_AE_SHAP['shap_test'] = explainer.shap_values(data_kdd['X_test'])
 
