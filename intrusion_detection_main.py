@@ -85,13 +85,13 @@ xtrain_subset = shap.sample(data_kdd['X_train'], 100)  # use a subset of trainin
 try:
     results_AE_SHAP, history_AE_SHAP = pickle.load(open("{}/data_1.pkl".format(save_loc), "rb"))
     autoencoder_shap = utf.Autoencoder(results_AE_SHAP['x_data'].shape[1], results_AE_SHAP['best_params'][2], results_AE_SHAP['best_params'][3]) # create the AE model object
-    autoencoder_shap.full.load_weights('{}/AE_shap_weights'.format(save_loc)); 
+    # autoencoder_shap.full.load_weights('{}/AE_shap_weights.h5'.format(save_loc)); 
 except:
     results_AE_SHAP = None
     history_AE_SHAP = None
     autoencoder_shap = None
 
-if (results_AE_SHAP is None) or (history_AE_SHAP is None) or (autoencoder_shap is None):
+if (results_AE_SHAP is None) or (history_AE_SHAP is None):
     results_AE_SHAP = {}
     explainer = shap.TreeExplainer(model, xtrain_subset, feature_perturbation = "interventional", model_output='probability') # NB output='probability' decomposes inputs among Pr(Y=1='Attack'|X)
     results_AE_SHAP['shap_train'] = explainer.shap_values(data_kdd['X_train'])
@@ -175,7 +175,10 @@ if (results_AE_SHAP is None) or (history_AE_SHAP is None) or (autoencoder_shap i
     # SAVE DATA
     pickle.dump(results_model, open("{}/data_0.pkl".format(save_loc), "wb")) 
     pickle.dump([results_AE_SHAP, history_AE_SHAP], open("{}/data_1.pkl".format(save_loc), "wb")) 
-    autoencoder_shap.full.save_weights('{}/AE_shap_weights'.format(save_loc))
+    try:
+        autoencoder_shap.full.save_weights('{}/AE_shap_weights.h5'.format(save_loc))
+    except:
+        pass
     
     # z = autoencoder_shap.full.predict(results_AE_SHAP['shap_test_scaled'])
     # z.min()
@@ -206,7 +209,7 @@ try:
     res_pca = pickle.load(open("{}/data_2.pkl".format(save_loc), "rb"))
 except:
     pass
-
+print("Starting PCA analysis...")
 res_pca = {} # create object to store results of our PCA analysis
 
 # first, transform SHAP data from training set into PCA space
@@ -224,8 +227,8 @@ plt.xlabel('Component 1', fontsize=15)
 plt.ylabel('Component 2', fontsize=15)
 
 lgnd = plt.legend(loc="upper right", scatterpoints=1, fontsize=15)
-lgnd.legendHandles[0]._sizes = [100]
-lgnd.legendHandles[1]._sizes = [100]
+lgnd.legend_handles[0]._sizes = [100]
+lgnd.legend_handles[1]._sizes = [100]
 
 plt.show()
 
@@ -250,8 +253,8 @@ plt.xlabel('Component 1', fontsize=15)
 plt.ylabel('Component 2', fontsize=15)
 
 lgnd = plt.legend(loc="upper right", scatterpoints=1, fontsize=15)
-lgnd.legendHandles[0]._sizes = [100]
-lgnd.legendHandles[1]._sizes = [100]
+lgnd.legend_handles[0]._sizes = [100]
+lgnd.legend_handles[1]._sizes = [100]
 
 plt.show()
 
