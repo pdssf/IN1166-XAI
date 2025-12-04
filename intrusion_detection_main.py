@@ -62,20 +62,26 @@ def XGBoost_train(data_kdd):
 
 def compute_model_performance(XGBoost, data_kdd):
     results_model = {}
-    results_model['y_pred_train'] = XGBoost.predict(data_kdd['X_train'])
-    results_model['y_pred_test'] = XGBoost.predict(data_kdd['X_test'])
-    results_model['y_pred_test_21'] = XGBoost.predict(data_kdd['X_test_21'])
-    
-    results_model['performance_model_train'] = utf.compute_performance_stats(data_kdd['Y_train_bin'], results_model['y_pred_train'])
-    results_model['performance_model_test'] = utf.compute_performance_stats(data_kdd['Y_test_bin'], results_model['y_pred_test'])
-    results_model['performance_model_test_21'] = utf.compute_performance_stats(data_kdd['Y_test_bin_21'], results_model['y_pred_test_21'])
-    # calculate how many new attacks the XGBoost model can identify, NB during deployment, we have no way of knowing these are new attacks
-    z = np.zeros(len(data_kdd['Y_test_bin']),)
-    z[data_kdd['new_attack_locs']] = 1
-    temp = np.multiply(z, results_model['y_pred_test'])
-    results_model['num_new_attacks_detected'] =   np.sum(temp)                                      # correctly identified 1297 new attacks (TP)
-    results_model['TPR_new_attacks'] = np.round(np.sum(temp)/len(data_kdd['new_attack_locs']) , 2)  # i.e., correctly identified 35% of new attacks (TPR)
-    pickle.dump(results_model, open("{}/results.pkl".format(save_loc), "wb"))
+    try:
+        results_model = pickle.load(open("{}/results.pkl".format(save_loc), "rb"))
+    except:
+        print("Results not found, computing model performance...")
+
+    if(results_model == {}):
+        results_model['y_pred_train'] = XGBoost.predict(data_kdd['X_train'])
+        results_model['y_pred_test'] = XGBoost.predict(data_kdd['X_test'])
+        results_model['y_pred_test_21'] = XGBoost.predict(data_kdd['X_test_21'])
+        
+        results_model['performance_model_train'] = utf.compute_performance_stats(data_kdd['Y_train_bin'], results_model['y_pred_train'])
+        results_model['performance_model_test'] = utf.compute_performance_stats(data_kdd['Y_test_bin'], results_model['y_pred_test'])
+        results_model['performance_model_test_21'] = utf.compute_performance_stats(data_kdd['Y_test_bin_21'], results_model['y_pred_test_21'])
+        # calculate how many new attacks the XGBoost model can identify, NB during deployment, we have no way of knowing these are new attacks
+        z = np.zeros(len(data_kdd['Y_test_bin']),)
+        z[data_kdd['new_attack_locs']] = 1
+        temp = np.multiply(z, results_model['y_pred_test'])
+        results_model['num_new_attacks_detected'] =   np.sum(temp)                                      # correctly identified 1297 new attacks (TP)
+        results_model['TPR_new_attacks'] = np.round(np.sum(temp)/len(data_kdd['new_attack_locs']) , 2)  # i.e., correctly identified 35% of new attacks (TPR)
+        pickle.dump(results_model, open("{}/results.pkl".format(save_loc), "wb"))
     return results_model
 
 def compute_shap(data_kdd, model, results_model):
@@ -275,8 +281,8 @@ def main():
     data_kdd = load_data()
     model = XGBoost_train(data_kdd)
     results_model = compute_model_performance(model, data_kdd)
-    compute_shap(data_kdd, model, results_model)
-    PCA_analysis(data_kdd, results_model)
+    # compute_shap(data_kdd, model, results_model)
+    # PCA_analysis(data_kdd, results_model)
     
 if __name__ == "__main__":
     main()
