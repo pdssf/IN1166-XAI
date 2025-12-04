@@ -14,8 +14,9 @@ physical_devices = tf.config.list_physical_devices('GPU')
 if physical_devices:
     try:
         tf.config.experimental.set_memory_growth(physical_devices[0], True)
+        print('Uso de GPU configurado.')
     except Exception as e:
-        print(f'Não foi possível configurar crescimento de memória da GPU: {e}')
+        print(f'Não foi possível configurar GPU: {e}')
 else:
     print('Nenhuma GPU disponível. Usando CPU.')
 
@@ -173,7 +174,6 @@ def read_KDD(data_loc, create_bin=None, create_multi=None):
     
     return data
 
-
 def create_bin_KDD(Y_train=None, Y_test=None, Y_test_21=None):
     """  module to create a binary version of the label columns of the NSL KDD dataset  """
     
@@ -197,7 +197,6 @@ def create_bin_KDD(Y_train=None, Y_test=None, Y_test_21=None):
     
     return Y_train_bin, Y_test_bin, Y_test_bin_21
     
-
 def create_multi_KDD(Y_train=None, Y_test=None, Y_test_21=None):
     """  create a multi-class version of the NSL KDD dataset  based on the 5 main type of attacks
     NB Training set should contain following number of instances per class:
@@ -220,8 +219,6 @@ def create_multi_KDD(Y_train=None, Y_test=None, Y_test_21=None):
     Y_test_multi_21 = Y_test_21.map(main_multi_class_encoder)
     
     return Y_train_multi, Y_test_multi, Y_test_multi_21
-
-
 
 class Autoencoder(Model):
     """ class to create an autonecoder
@@ -271,11 +268,6 @@ class Autoencoder(Model):
         #reconstruction_loss = self.mae(inputs, self.final_output)
         #self.full.add_loss(reconstruction_loss)
         self.full.compile(optimizer='adam', loss='mae')
-
-
-
-    
-
 
 def get_hyper_Autoencoder(parameters, x_data, val_data=None, method='exact', num_perm=None, num_epochs=20, batch_size=512, AE_type = 'joint'):
     """
@@ -359,8 +351,6 @@ def get_hyper_Autoencoder(parameters, x_data, val_data=None, method='exact', num
     best_params = results[loc_best]
     
     return results, best_params    
-
-
 
 def AE_anomaly_detection(autoencoder, train_data, test_data, ground_truth_locs, plt_title=None):    
     """ main function that applies autoencoder to the train and test sets and calculates performance of detector """
