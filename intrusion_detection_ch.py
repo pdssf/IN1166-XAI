@@ -29,38 +29,40 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 import utility_funcs as utf
+import utils_chd as chd_utils
 
 np.random.seed(10)
 tf.random.set_seed(10)
 
 
 def load_data():
-    data_kdd = None
-
+    data_chd = None
     try:
-        data_kdd = pickle.load(open("{}/data_nsl.pkl".format(save_loc), "rb"))
+        data_chd = pickle.load(open("{}/data_chd.pkl".format(save_loc), "rb"))
+        print("Data found, loading in preprocessed dataset...")
     except:
         print("Data not found, reading in dataset...")
 
-    if(data_kdd is None):
-        data_kdd = utf.read_KDD(data_loc) 
-        pickle.dump(data_kdd, open("{}/data_nsl.pkl".format(save_loc), "wb"))
-    return data_kdd
+    if(data_chd is None):
+        data_chd = chd_utils.load_and_preprocess_chd(file_path=data_loc + 'DoS_dataset_processed.csv') 
+        pickle.dump(data_chd, open("{}/data_chd.pkl".format(save_loc), "wb"))
+    return data_chd
 
-def XGBoost_train(data_kdd):
+def XGBoost_train(data_chd):
     XGBoost = None
     try:
         XGBoost = pickle.load(open("{}/XGBoost.pkl".format(save_loc), "rb"))
+        print("XGBoost model found, loading...")
     except:
         print("XGBoost model not found, training a new one...")
 
     if(XGBoost is None):
         XGBoost = xgboost.XGBClassifier(objective="binary:logistic", seed=10)
-        XGBoost.fit(data_kdd['X_train'], data_kdd['Y_train_bin'])
+        XGBoost.fit(data_chd['X_train'], data_chd['Y_train'])
         pickle.dump(XGBoost, open("{}/XGBoost.pkl".format(save_loc), "wb"))
     return XGBoost
 
-def compute_model_performance(XGBoost, data_kdd):
+def compute_model_performance(XGBoost, data_chd):
     results_model = {}
     try:
         results_model = pickle.load(open("{}/results.pkl".format(save_loc), "rb"))
@@ -68,25 +70,19 @@ def compute_model_performance(XGBoost, data_kdd):
         print("Results not found, computing model performance...")
 
     if(results_model == {}):
-        results_model['y_pred_train'] = XGBoost.predict(data_kdd['X_train'])
-        results_model['y_pred_test'] = XGBoost.predict(data_kdd['X_test'])
-        results_model['y_pred_test_21'] = XGBoost.predict(data_kdd['X_test_21'])
+        results_model['y_pred_train'] = XGBoost.predict(data_chd['X_train'])
+        results_model['y_pred_test'] = XGBoost.predict(data_chd['X_test'])
+        results_model['y_pred_val'] = XGBoost.predict(data_chd['X_val'])
         
-        results_model['performance_model_train'] = utf.compute_performance_stats(data_kdd['Y_train_bin'], results_model['y_pred_train'])
-        results_model['performance_model_test'] = utf.compute_performance_stats(data_kdd['Y_test_bin'], results_model['y_pred_test'])
-        results_model['performance_model_test_21'] = utf.compute_performance_stats(data_kdd['Y_test_bin_21'], results_model['y_pred_test_21'])
-        # calculate how many new attacks the XGBoost model can identify, NB during deployment, we have no way of knowing these are new attacks
-        z = np.zeros(len(data_kdd['Y_test_bin']),)
-        z[data_kdd['new_attack_locs']] = 1
-        temp = np.multiply(z, results_model['y_pred_test'])
-        results_model['num_new_attacks_detected'] =   np.sum(temp)                                      # correctly identified 1297 new attacks (TP)
-        results_model['TPR_new_attacks'] = np.round(np.sum(temp)/len(data_kdd['new_attack_locs']) , 2)  # i.e., correctly identified 35% of new attacks (TPR)
+        results_model['performance_model_train'] = utf.compute_performance_stats(data_chd['Y_train'], results_model['y_pred_train'])
+        results_model['performance_model_test'] = utf.compute_performance_stats(data_chd['Y_test'], results_model['y_pred_test'])
+        results_model['performance_model_val'] = utf.compute_performance_stats(data_chd['Y_val'], results_model['y_pred_val'])
         pickle.dump(results_model, open("{}/results.pkl".format(save_loc), "wb"))
     return results_model
 
-def compute_shap(data_kdd, model, results_model):
+def compute_shap(data_chd, model, results_model):
     print("Starting SHAP value computation...")
-    xtrain_subset = shap.sample(data_kdd['X_train'], 100) 
+    xtrain_subset = shap.sample(data_chd['X_val'], 1000) 
     results_AE_SHAP = None
     history_AE_SHAP = None
     autoencoder_shap = None
@@ -99,23 +95,13 @@ def compute_shap(data_kdd, model, results_model):
 
     if (results_AE_SHAP is None) or (history_AE_SHAP is None):
         results_AE_SHAP = {}
-        explainer = shap.TreeExplainer(model, xtrain_subset, feature_perturbation = "interventional", model_output='probability') # NB output='probability' decomposes inputs among Pr(Y=1='Attack'|X)
-        results_AE_SHAP['shap_train'] = explainer.shap_values(data_kdd['X_train'])
-        results_AE_SHAP['shap_test'] = explainer.shap_values(data_kdd['X_test'])
-        # Compute example explanation for a Probe attack - NB SHAP package requires us to wrap everything into a single object before plotting
-        idx = data_kdd['Y_train'][data_kdd['Y_train']=='ipsweep'].index # get all locations where ipsweep attack occur (i.e., main attack class = Probe)
-
-        class Object(object):
-            pass
-
-        exp = Object()
-        exp.feature_names = data_kdd['feature_names']
-        exp.base_values = explainer.expected_value
-        exp.data = data_kdd['X_train'].loc[idx[0]]
-        exp.values = results_AE_SHAP['shap_train'][idx[0]]
+        explainer = shap.TreeExplainer(model, xtrain_subset, feature_perturbation = "interventional", model_output='raw') # NB output='probability' decomposes inputs among Pr(Y=1='Attack'|X)
+        results_AE_SHAP['shap_train'] = explainer(data_chd['X_train'])
+        results_AE_SHAP['shap_test'] = explainer.shap_values(data_chd['X_test'])
 
         try:
-            shap.plots.waterfall(exp) # plot the explanation
+            shap.plots.waterfall()
+            shap.plots.waterfall(results_AE_SHAP['shap_test'][0])
         except Exception as e:
             print(f"Error plotting SHAP waterfall: {e}")
 
@@ -142,8 +128,8 @@ def compute_shap(data_kdd, model, results_model):
                                         }
 
         # check size of grid space to ensure not too large
-        z = [*results_AE_SHAP['parameters'].values()]                       # get values of each sublist in the overall parameter list 
-        z = np.prod(np.array([len(sublist) for sublist in z]))              # total number of permutations in the grid 
+        # z = [*results_AE_SHAP['parameters'].values()]                       # get values of each sublist in the overall parameter list 
+        # z = np.prod(np.array([len(sublist) for sublist in z]))              # total number of permutations in the grid 
 
         # perform the grid search and return parameters of the best model
         results_AE_SHAP['grid_search'], results_AE_SHAP['best_params'] = utf.get_hyper_Autoencoder(results_AE_SHAP['parameters'], results_AE_SHAP['x_data'], results_AE_SHAP['val_data'],
@@ -162,19 +148,19 @@ def compute_shap(data_kdd, model, results_model):
 
         # perform anomaly detection based on the reconstruction error of the AE and save results
         results_AE_SHAP['performance_new_attacks'], results_AE_SHAP['new_attack_pred_locs'], results_AE_SHAP['AE_threshold'] = utf.AE_anomaly_detection(autoencoder_shap, results_AE_SHAP['shap_train_scaled'], 
-                                                                                                                                                        results_AE_SHAP['shap_test_scaled'], data_kdd['new_attack_locs'], plt_title='Autoencoder trained on SHAP values')
+                                                                                                                                                        results_AE_SHAP['shap_test_scaled'], data_chd['new_attack_locs'], plt_title='Autoencoder trained on SHAP values')
 
         # calculate overall accuracy of the IDS system (XGBoost IDS and Anomaly detector) to detect attacks new or old attacks on the NSL-KDD Testset+
         results_AE_SHAP['all_attack_pred_locs'] = np.unique(np.concatenate((results_AE_SHAP['new_attack_pred_locs'], np.where(results_model['y_pred_test']==1)[0] )))
-        results_AE_SHAP['y_pred_all'] = np.zeros(len(data_kdd['Y_test_bin']),)
+        results_AE_SHAP['y_pred_all'] = np.zeros(len(data_chd['Y_test']),)
         results_AE_SHAP['y_pred_all'][results_AE_SHAP['all_attack_pred_locs']] = 1
-        results_AE_SHAP['performance_overall'] = utf.compute_performance_stats(data_kdd['Y_test_bin'], results_AE_SHAP['y_pred_all'])
+        results_AE_SHAP['performance_overall'] = utf.compute_performance_stats(data_chd['Y_test'], results_AE_SHAP['y_pred_all'])
 
 
         # calculate TPR of new attacks (exclusively) for the autonencoder as well the overall NIDS
-        results_model['TPR_new_attacks'] = np.round(results_AE_SHAP['performance_new_attacks']['TP']/len(data_kdd['new_attack_locs']) , 2)
+        results_model['TPR_new_attacks'] = np.round(results_AE_SHAP['performance_new_attacks']['TP']/len(data_chd['new_attack_locs']) , 2)
 
-        results_model['TPR_new_attacks_overall'] = np.round(results_AE_SHAP['performance_overall']['TP']/np.sum(data_kdd['Y_test_bin']) , 2)
+        results_model['TPR_new_attacks_overall'] = np.round(results_AE_SHAP['performance_overall']['TP']/np.sum(data_chd['Y_test_bin']) , 2)
 
         # SAVE DATA
         pickle.dump(results_model, open("{}/results.pkl".format(save_loc), "wb")) 
@@ -185,7 +171,7 @@ def compute_shap(data_kdd, model, results_model):
             print("Error saving autoencoder weights.", e)
             pass
 
-def PCA_analysis(data_kdd, results_AE_SHAP):
+def PCA_analysis(data_chd, results_AE_SHAP):
     """  
     To try and understand why anomaly-detection based on SHAP (i.e. the 'explanation domain') results in enhanced performance of the NIDS,
     we visualise the data using PCA: First, we apply PCA to the SHAP explanations computed on the
@@ -218,8 +204,8 @@ def PCA_analysis(data_kdd, results_AE_SHAP):
 
     # now plot the first 2 PCA components fitted to the SHAP training data
     fig = plt.figure(figsize=(8,8))
-    plt.scatter(res_pca['SHAP_train'][data_kdd['train_attack_locs'],0], res_pca['SHAP_train'][data_kdd['train_attack_locs'],1], marker='1', s=1, c='crimson', label='Attacks')   # plot the attacks in red
-    plt.scatter(res_pca['SHAP_train'][data_kdd['train_normal_locs'],0], res_pca['SHAP_train'][data_kdd['train_normal_locs'],1], marker='4', s=1, c='royalblue', label='Normal')   # plot the normal traffic in blue
+    plt.scatter(res_pca['SHAP_train'][data_chd['train_attack_locs'],0], res_pca['SHAP_train'][data_chd['train_attack_locs'],1], marker='1', s=1, c='crimson', label='Attacks')   # plot the attacks in red
+    plt.scatter(res_pca['SHAP_train'][data_chd['train_normal_locs'],0], res_pca['SHAP_train'][data_chd['train_normal_locs'],1], marker='4', s=1, c='royalblue', label='Normal')   # plot the normal traffic in blue
     # plt.title('PCA Applied to SHAP values of the NSL-KDD Training Dataset')
     plt.xlabel('Component 1', fontsize=15)
     plt.ylabel('Component 2', fontsize=15)
@@ -233,19 +219,19 @@ def PCA_analysis(data_kdd, results_AE_SHAP):
 
     # NB need to scale inputs using only standard deviation, NB this produces results similar to those seen in many other intrusion works
 
-    #(np.count_nonzero(data_kdd.X_train==0) > ((len(data_kdd.X_train)*41)/2) )              # NSL Dataset is sparse, so better not to deduct mean when standardising the data
-    data_kdd['scaler'] = StandardScaler(with_mean=False)                                    # scale the training set data
-    data_kdd['X_train_scaled'] = data_kdd['scaler'].fit_transform(data_kdd['X_train'])
+    #(np.count_nonzero(data_chd.X_train==0) > ((len(data_chd.X_train)*41)/2) )              # NSL Dataset is sparse, so better not to deduct mean when standardising the data
+    data_chd['scaler'] = StandardScaler(with_mean=False)                                    # scale the training set data
+    data_chd['X_train_scaled'] = data_chd['scaler'].fit_transform(data_chd['X_train'])
 
 
     res_pca['model_x'] = PCA(n_components=10)                                               # create PCA object to represent the raw input data
-    res_pca['x_train'] = res_pca['model_x'].fit_transform(data_kdd['X_train_scaled'])       # fit PCA to the raw training data
+    res_pca['x_train'] = res_pca['model_x'].fit_transform(data_chd['X_train_scaled'])       # fit PCA to the raw training data
     # res_pca.model_x.explained_variance_ratio_.cumsum()
 
 
     fig = plt.figure(figsize=(8,8))   # default size = 8,6
-    plt.scatter(res_pca['x_train'][data_kdd['train_attack_locs'],0], res_pca['x_train'][data_kdd['train_attack_locs'],1], marker='1', s=1, c='crimson', label='Attacks')   # plot the attacks in red
-    plt.scatter(res_pca['x_train'][data_kdd['train_normal_locs'],0], res_pca['x_train'][data_kdd['train_normal_locs'],1], marker='4', s=1, c='royalblue', label='Normal')   # plot the normal traffic in blue
+    plt.scatter(res_pca['x_train'][data_chd['train_attack_locs'],0], res_pca['x_train'][data_chd['train_attack_locs'],1], marker='1', s=1, c='crimson', label='Attacks')   # plot the attacks in red
+    plt.scatter(res_pca['x_train'][data_chd['train_normal_locs'],0], res_pca['x_train'][data_chd['train_normal_locs'],1], marker='4', s=1, c='royalblue', label='Normal')   # plot the normal traffic in blue
     # plt.title('PCA Applied to the raw inputs of the NSL-KDD Training Dataset')
     plt.xlabel('Component 1', fontsize=15)
     plt.ylabel('Component 2', fontsize=15)
@@ -274,15 +260,15 @@ def PCA_analysis(data_kdd, results_AE_SHAP):
     del labels, rects1, rects2, width, label_locs
 
     # SAVE DATA
-    pickle.dump(data_kdd, open("{}/data_nsl.pkl".format(save_loc), "wb")) 
+    pickle.dump(data_chd, open("{}/data_chd.pkl".format(save_loc), "wb")) 
     pickle.dump(res_pca, open("{}/data_2.pkl".format(save_loc), "wb")) 
 
 def main():
-    data_kdd = load_data()
-    model = XGBoost_train(data_kdd)
-    results_model = compute_model_performance(model, data_kdd)
-    # compute_shap(data_kdd, model, results_model)
-    # PCA_analysis(data_kdd, results_model)
+    data_chd = load_data()
+    model = XGBoost_train(data_chd)
+    results_model = compute_model_performance(model, data_chd)
+    # compute_shap(data_chd, model, results_model)
+    # PCA_analysis(data_chd, results_model)
     
 if __name__ == "__main__":
     main()
