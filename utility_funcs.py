@@ -85,10 +85,6 @@ def read_KDD(data_loc, create_bin=None, create_multi=None):
     # ALTERNATIVELY, can use label encoding method from Sckit learn
     enc = OrdinalEncoder()
     enc.fit(X_train[['protocol_type', 'service', 'flag']])
-    #X_train[['protocol_type', 'service', 'flag']] = enc.transform(X_train[['protocol_type', 'service', 'flag']])
-    #X_test[['protocol_type', 'service', 'flag']] = enc.transform(X_test[['protocol_type', 'service', 'flag']])
-    #X_test_21[['protocol_type', 'service', 'flag']] = enc.transform(X_test_21[['protocol_type', 'service', 'flag']])
-        
         
     # get locs of new attacks in Test+ set
     label_encoder_all_train = dict(zip(Y_train.unique(), range(len(Y_train.unique()))))   # encoder for all unique labels seen during training
@@ -263,10 +259,7 @@ class Autoencoder(Model):
         
         if AE_type == 'random':
             self.encoder.trainable = False # if defining a random autoencoder, dont optimise the encoder weights
-        
-        # define the loss function
-        #reconstruction_loss = self.mae(inputs, self.final_output)
-        #self.full.add_loss(reconstruction_loss)
+       
         self.full.compile(optimizer='adam', loss='mae')
 
 def get_hyper_Autoencoder(parameters, x_data, val_data=None, method='exact', num_perm=None, num_epochs=20, batch_size=512, AE_type = 'joint'):
@@ -340,10 +333,6 @@ def get_hyper_Autoencoder(parameters, x_data, val_data=None, method='exact', num
          warnings.warn("Error running grid search, if method='random' selected, ensure 'num_perm' also defined")
          best_params = None
          return
-       
-            #check_list.append(([item for item in zz if isinstance(item, str)]+[item for item in zz if isinstance(item, int)]))
-            #c = Counter(map(tuple,check_list))
-            #dups = [k for k,v in c.items() if v>1]
     
     # now return best parameters
     loc_best =  [item[0] for item in results] # location of list with smallest lost
@@ -383,17 +372,10 @@ def AE_anomaly_detection(autoencoder, train_data, test_data, ground_truth_locs, 
     sns.kdeplot(data=mse_train, bw_adjust=1, log_scale=True, color='blue', label='Reconstruction Error Train set') # need to use log scale here as dist contains very high outliers
     plt.vlines(error_threshold, ymin=0, ymax=1.0, colors='red', label='Error Threshold')
     sns.kdeplot(data=mse_test, bw_adjust=1, log_scale=True, color='green', label='Reconstruction Error Test set')
-    sns.kdeplot(data=mse_test[ground_truth_locs], bw_adjust=1, log_scale=True, color='orange', label='Ground-Truth Anomalies')
     plt.xlabel("MSE")
     plt.legend(loc='upper right')
     plt.title(plt_title)
     plt.show()
-    
-    #save the data in a dictionary
-    #results = {}
-    #results['performance_summary'] = performance_summary
-    #results['pred_new_attack_locs'] = pred_new_attack_locs
-    #results['error_threshold'] = error_threshold
     
     return performance_summary, pred_new_attack_locs, error_threshold
 
