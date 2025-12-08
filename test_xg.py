@@ -1,18 +1,21 @@
 
 import shap
 import xgboost as xgboost
+from intrusion_detection_ch import load_data, XGBoost_train
+from utils_chd import load_malicious_data, load_benign_data
 
-from sklearn.datasets import load_iris
-X, y = load_iris(return_X_y=True)
+data_chd = load_data()
+X_malicious, y_malicious = load_malicious_data()
+model = XGBoost_train(data_chd)
 
-model = xgboost.XGBClassifier(objective="binary:logistic", seed=10).fit(X, y)
+explainer = shap.TreeExplainer(model, feature_perturbation = "interventional", model_output='raw')
+malicious_shap_values = explainer(shap.sample(X_malicious, 10))
+benign_shap_values = explainer(shap.sample(load_benign_data()[0], 10))
 
-# explain the model's predictions using SHAP
-# (same syntax works for LightGBM, CatBoost, scikit-learn, transformers, Spark, etc.)
-explainer = shap.TreeExplainer(model, feature_perturbation = "interventional", model_output='probability')
-shap_values = explainer(X)
+print("Benign SHAP Values Waterfall Plots:")
+for v in benign_shap_values:
+    shap.plots.waterfall(v)
 
-# visualize the first prediction's explanation
-
-shap.plots.waterfall(shap_values[0])
-
+print("Malicious SHAP Values Waterfall Plots:")
+for v in malicious_shap_values:
+    shap.plots.waterfall(v)

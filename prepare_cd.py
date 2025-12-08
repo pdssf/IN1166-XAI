@@ -1,26 +1,8 @@
 import pandas as pd
 import numpy as np
-from typing import Union
 from pathlib import Path
 
 
-def entropy(values: Union[np.ndarray, list]) -> float:
-    """Compute Shannon entropy of a 1-D sequence of discrete values.
-
-    Returns 0 for empty input or when all values are identical.
-    """
-    if values is None:
-        return 0.0
-    arr = np.asarray(values)
-    if arr.size == 0:
-        return 0.0
-    # drop nans when calculating entropy
-    arr = arr[~pd.isna(arr)]
-    if arr.size == 0:
-        return 0.0
-    vals, counts = np.unique(arr, return_counts=True)
-    probs = counts / counts.sum()
-    return float(-np.sum(probs * np.log2(probs)))
 
 
 def _safe_hex_to_int(x):
@@ -74,23 +56,12 @@ def preprocess_can(file: str, keep_raw: bool = False, remove_error_flags: bool =
     if not keep_raw:
         # applymap over subset for robust conversion
         df[byte_cols] = df[byte_cols].applymap(_safe_hex_to_int)
-
-    # calcular estatísticas do payload (desconsiderando NaNs)
-    df["payload_sum"] = df[byte_cols].sum(axis=1, skipna=True)
-    df["payload_mean"] = df[byte_cols].mean(axis=1, skipna=True)
-    # use population std (ddof=0) to be deterministic
-    df["payload_std"] = df[byte_cols].std(axis=1, ddof=0, skipna=True)
-    df["entropy"] = df[byte_cols].apply(lambda r: entropy(r.values), axis=1)
-
-    # tempo entre mensagens do mesmo ID (IAT) — preencher NaN com 0 quando não há anterior
-    df = df.sort_values("timestamp").reset_index(drop=True)
-    df["iat"] = df.groupby("ID")["timestamp"].diff().fillna(0)
-    df["flag"] = df["flag"].map(lambda x: 0 if x == "R" else 1) # Flag : T or R, T represents injected message while R represents normal message
+        df["flag"] = df["flag"].map(lambda x: 0 if x == "R" else 1) # Flag : T or R, T represents injected message while R represents normal message
 
     return df
 
 
-def process_can_directory(input_dir: str, output_dir: str = "results", output_format: str = "csv") -> None:
+def process_can_directory(input_dir: str, output_dir: str = "results") -> None:
     """Process all CAN CSV files in input_dir and save preprocessed data to output_dir.
 
     Parameters
@@ -100,7 +71,6 @@ def process_can_directory(input_dir: str, output_dir: str = "results", output_fo
     """
     input_path = Path(input_dir)
     output_path = Path(output_dir)
-    # output_path.mkdir(parents=True, exist_ok=True)
 
     csv_files = list(input_path.glob("*.csv"))
     if not csv_files:
@@ -112,21 +82,12 @@ def process_can_directory(input_dir: str, output_dir: str = "results", output_fo
         try:
             df = preprocess_can(str(csv_file))
             output_name = csv_file.stem
-            
-            if output_format == "parquet":
-                output_file = output_path / f"{output_name}_processed.parquet"
-                df.to_parquet(output_file, index=False)
-            else:  # csv
-                output_file = output_path / f"{output_name}_processed.csv"
-                df.to_csv(output_file, index=False)
-            
-            print(f"  → Saved to {output_file}")
+            output_file = output_path / f"{output_name}_processed.csv"
+            df.to_csv(output_file, index=False)
         except Exception as e:
-            print(f"  ✗ Error processing {csv_file.name}: {e}")
+            print(e)
 
 
 if __name__ == "__main__":
     process_can_directory("./car_hacking_dataset", output_dir="./results_car_hacking_dataset", output_format="csv")
-    # Example: process a directory of CAN files
-    # process_can_directory("./data", output_dir="./results", output_format="csv")
     pass
