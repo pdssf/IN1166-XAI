@@ -260,7 +260,7 @@ class Autoencoder(Model):
         if AE_type == 'random':
             self.encoder.trainable = False # if defining a random autoencoder, dont optimise the encoder weights
        
-        self.full.compile(optimizer='adam', loss='mae')
+        self.full.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3), loss='mae')
 
 def get_hyper_Autoencoder(parameters, x_data, val_data=None, method='exact', num_perm=None, num_epochs=20, batch_size=512, AE_type = 'joint'):
     """
@@ -343,7 +343,7 @@ def get_hyper_Autoencoder(parameters, x_data, val_data=None, method='exact', num
 
 def AE_anomaly_detection(autoencoder, train_data, test_data, ground_truth_locs, plt_title=None):    
     """ main function that applies autoencoder to the train and test sets and calculates performance of detector """
-    
+    print("Testing Model...")
     # To find anomalies, first compute Reconstruction Error on Test data
     encoded_train = autoencoder.encoder.predict(train_data)
     decoded_train = autoencoder.decoder.predict(encoded_train)

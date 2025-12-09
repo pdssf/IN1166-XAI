@@ -93,57 +93,59 @@ def compute_shap(data_kdd, model, results_model):
     try:
         results_AE_SHAP, history_AE_SHAP = pickle.load(open("{}/data_1.pkl".format(save_loc), "rb"))
         autoencoder_shap = utf.Autoencoder(results_AE_SHAP['x_data'].shape[1], results_AE_SHAP['best_params'][2], results_AE_SHAP['best_params'][3]) # create the AE model object
-        autoencoder_shap.full.load_weights('{}/AE_shap.weights.h5'.format(save_loc));  # -> estava dando erro aqui
+        autoencoder_shap.full.load_weights('{}/AE_shap.weights.h5'.format(save_loc))
     except:
         print("SHAP/Autoencoder results not found, computing SHAP values and training Autoencoder...")
         history_AE_SHAP = None
 
-    if (results_AE_SHAP is None) or (history_AE_SHAP is None):
+    if (results_AE_SHAP is None):
         results_AE_SHAP = {}
         explainer = shap.TreeExplainer(model, data_kdd['X_train'], feature_perturbation = "interventional", model_output='probability') # NB output='probability' decomposes inputs among Pr(Y=1='Attack'|X)
         results_AE_SHAP['shap_train'] = explainer.shap_values(data_kdd['X_train'])
         results_AE_SHAP['shap_test'] = explainer.shap_values(data_kdd['X_test'])
 
-    # scale data using Sklearn minmax scaler
-    results_AE_SHAP['scaler'] = MinMaxScaler()                                     
-    results_AE_SHAP['shap_train_scaled'] = results_AE_SHAP['scaler'].fit_transform(results_AE_SHAP['shap_train'])  # scale the training set data
-    results_AE_SHAP['shap_test_scaled'] = results_AE_SHAP['scaler'].transform(results_AE_SHAP['shap_test'])        # scale the test set data
+    if (history_AE_SHAP is None):
+        print("Training Autoencoder on SHAP values...")
+        results_AE_SHAP['scaler'] = MinMaxScaler(feature_range=(-1, 1))                            
+        results_AE_SHAP['shap_train_scaled'] = results_AE_SHAP['scaler'].fit_transform(results_AE_SHAP['shap_train'])  # scale the training set data
+        results_AE_SHAP['shap_test_scaled'] = results_AE_SHAP['scaler'].transform(results_AE_SHAP['shap_test'])        # scale the test set data
 
-    # before training autoencoder, split the SHAP values (based on the training data) into a new train and validation set
-    results_AE_SHAP['x_data'], results_AE_SHAP['val_data'] = train_test_split(results_AE_SHAP['shap_train_scaled'], test_size=0.2, random_state=10)
+        # FIX: Train autoencoder ONLY on NORMAL data (not attacks!)
+        shap_train_normal_only = results_AE_SHAP['shap_train_scaled'][data_kdd['train_normal_locs']]
+        results_AE_SHAP['x_data'], results_AE_SHAP['val_data'] = train_test_split(shap_train_normal_only, test_size=0.2, random_state=10)
 
+        # perform grid search to find the best paramters to use for the autoencoder model
+        # specify the paramters of the grid space to serach, i.e. can use: np.arange(448,800,4).tolist()
+        results_AE_SHAP['parameters'] = {
+                                            # encoder params to search across
+                                            'dense_1_units':[512],                                   'dense_1_activation':['relu'],  # 32,64,128,256
+                                            'dense_2_units':[128],                                 'dense_2_activation':['relu'],  # 32,48,64
+                                            'dense_3_units':[8],                                           'dense_3_activation':['relu'], # 8,16, 24
+                                            # decoder params to search across
+                                            'dense_4_units':[128],                                        'dense_4_activation':['relu'],
+                                            'dense_5_units':[512],                                    'dense_5_activation':['relu'],  # 64,128,256
+                                            'dense_6_units':[results_AE_SHAP['x_data'].shape[1]],               'dense_6_activation':['tanh']    
+                                        }
+        # perform the grid search and return parameters of the best model
+        results_AE_SHAP['grid_search'], results_AE_SHAP['best_params'] = utf.get_hyper_Autoencoder(results_AE_SHAP['parameters'], results_AE_SHAP['x_data'], results_AE_SHAP['val_data'],
+                                                                                                method='exact', num_epochs=10, batch_size=512, AE_type = 'joint')   
+        # Using the best parameters, build and train the final model
+        autoencoder_shap = utf.Autoencoder(results_AE_SHAP['x_data'].shape[1], results_AE_SHAP['best_params'][2], results_AE_SHAP['best_params'][3], AE_type='joint') # create the AE model object
 
-    # perform grid search to find the best paramters to use for the autoencoder model
-    # specify the paramters of the grid space to serach, i.e. can use: np.arange(448,800,4).tolist()
-    results_AE_SHAP['parameters'] = {
-                                        # encoder params to search across
-                                        'dense_1_units':[1456],                                   'dense_1_activation':['relu'],  # 32,64,128,256
-                                        'dense_2_units':[724],                                 'dense_2_activation':['relu'],  # 32,48,64
-                                        'dense_3_units':[14],                                           'dense_3_activation':['relu'], # 8,16, 24
-                                        # decoder params to search across
-                                        'dense_4_units':[632],                                        'dense_4_activation':['relu'],
-                                        'dense_5_units':[1644],                                    'dense_5_activation':['relu'],  # 64,128,256
-                                        'dense_6_units':[results_AE_SHAP['x_data'].shape[1]],               'dense_6_activation':['tanh']    
-                                    }
+        early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-4, patience=10, verbose=2, mode='min', restore_best_weights=True)     # set up early stop criteria
+        history_AE_SHAP = autoencoder_shap.full.fit(results_AE_SHAP['x_data'], results_AE_SHAP['x_data'], epochs=1000, batch_size=512, shuffle=True, validation_data=(results_AE_SHAP['val_data'],   
+                                    results_AE_SHAP['val_data']), verbose=2, callbacks=[early_stop]).history
+        # plot the training curve
+        plt.plot(history_AE_SHAP["loss"], label="Training Loss")
+        plt.plot(history_AE_SHAP["val_loss"], label="Validation Loss")
+        plt.legend()
+        plt.show()
 
-    # check size of grid space to ensure not too large
-    z = [*results_AE_SHAP['parameters'].values()]                       # get values of each sublist in the overall parameter list 
-    z = np.prod(np.array([len(sublist) for sublist in z]))              # total number of permutations in the grid 
-
-    # perform the grid search and return parameters of the best model
-    results_AE_SHAP['grid_search'], results_AE_SHAP['best_params'] = utf.get_hyper_Autoencoder(results_AE_SHAP['parameters'], results_AE_SHAP['x_data'], results_AE_SHAP['val_data'],
-                                                                                            method='exact', num_epochs=10, batch_size=512, AE_type = 'joint')   
-    # Using the best parameters, build and train the final model
-    autoencoder_shap = utf.Autoencoder(results_AE_SHAP['x_data'].shape[1], results_AE_SHAP['best_params'][2], results_AE_SHAP['best_params'][3], AE_type='joint') # create the AE model object
-
-    early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-4, patience=10, verbose=2, mode='min', restore_best_weights=True)     # set up early stop criteria
-    history_AE_SHAP = autoencoder_shap.full.fit(results_AE_SHAP['x_data'], results_AE_SHAP['x_data'], epochs=1000, batch_size=512, shuffle=True, validation_data=(results_AE_SHAP['val_data'],   
-                                results_AE_SHAP['val_data']), verbose=2, callbacks=[early_stop]).history
-    # plot the training curve
-    plt.plot(history_AE_SHAP["loss"], label="Training Loss")
-    plt.plot(history_AE_SHAP["val_loss"], label="Validation Loss")
-    plt.legend()
-    plt.show()
+        try:
+            autoencoder_shap.full.save_weights('{}/AE_shap.weights.h5'.format(save_loc))
+        except Exception as e:
+            print("Error saving autoencoder weights.", e)
+            pass
 
     # perform anomaly detection based on the reconstruction error of the AE and save results
     results_AE_SHAP['performance_new_attacks'], results_AE_SHAP['new_attack_pred_locs'], results_AE_SHAP['AE_threshold'] = utf.AE_anomaly_detection(autoencoder_shap, results_AE_SHAP['shap_train_scaled'], 
@@ -151,19 +153,14 @@ def compute_shap(data_kdd, model, results_model):
 
     # calculate overall accuracy of the IDS system (XGBoost IDS and Anomaly detector) to detect attacks new or old attacks on the NSL-KDD Testset+
     results_AE_SHAP['all_attack_pred_locs'] = np.unique(np.concatenate((results_AE_SHAP['new_attack_pred_locs'], np.where(results_model['y_pred_test']==1)[0] )))
-    results_AE_SHAP['y_pred_all'] = np.zeros(len(data_kdd['Y_test']),)
+    results_AE_SHAP['y_pred_all'] = np.zeros(len(data_kdd['Y_test_bin']),)
     results_AE_SHAP['y_pred_all'][results_AE_SHAP['all_attack_pred_locs']] = 1
-    results_AE_SHAP['performance_overall'] = utf.compute_performance_stats(data_kdd['Y_test'], results_AE_SHAP['y_pred_all'])
+    results_AE_SHAP['performance_overall'] = utf.compute_performance_stats(data_kdd['Y_test_bin'], results_AE_SHAP['y_pred_all'])
 
 
     # SAVE DATA
     pickle.dump(results_model, open("{}/results.pkl".format(save_loc), "wb")) 
     pickle.dump([results_AE_SHAP, history_AE_SHAP], open("{}/data_1.pkl".format(save_loc), "wb")) 
-    try:
-        autoencoder_shap.full.save_weights('{}/AE_shap.weights.h5'.format(save_loc))
-    except Exception as e:
-        print("Error saving autoencoder weights.", e)
-        pass
 
 def PCA_analysis(data_kdd, results_AE_SHAP):
     """  

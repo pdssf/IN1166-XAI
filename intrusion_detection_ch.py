@@ -97,25 +97,31 @@ def compute_shap(data_chd, model, results_model):
 
 
         # scale data using Sklearn minmax scaler
-        results_AE_SHAP['scaler'] = MinMaxScaler()                                     
+        results_AE_SHAP['scaler'] = MinMaxScaler(feature_range=(0, 1))                                     
         results_AE_SHAP['shap_train_scaled'] = results_AE_SHAP['scaler'].fit_transform(results_AE_SHAP['shap_train'])  # scale the training set data
         results_AE_SHAP['shap_test_scaled'] = results_AE_SHAP['scaler'].transform(results_AE_SHAP['shap_test'])        # scale the test set data
 
-        # before training autoencoder, split the SHAP values (based on the training data) into a new train and validation set
-        results_AE_SHAP['x_data'], results_AE_SHAP['val_data'] = train_test_split(results_AE_SHAP['shap_train_scaled'], test_size=0.2, random_state=10)
-
+        shap_train_normal_only = results_AE_SHAP['shap_train_scaled'][data_chd['train_normal_locs']]
+        results_AE_SHAP['x_data'], results_AE_SHAP['val_data'] = train_test_split(shap_train_normal_only, test_size=0.2, random_state=10)
 
         # perform grid search to find the best paramters to use for the autoencoder model
         # specify the paramters of the grid space to serach, i.e. can use: np.arange(448,800,4).tolist()
+    
     results_AE_SHAP['parameters'] = {
                                         # encoder params to search across
-                                        'dense_1_units':[1456],                                   'dense_1_activation':['relu'],  # 32,64,128,256
-                                        'dense_2_units':[724],                                 'dense_2_activation':['relu'],  # 32,48,64
-                                        'dense_3_units':[14],                                           'dense_3_activation':['relu'], # 8,16, 24
+                                        'dense_1_units':[256],                                   
+                                        'dense_1_activation':['relu'],  # 32,64,128,256
+                                        'dense_2_units':[64],                                 
+                                        'dense_2_activation':['relu'],  # 32,48,64
+                                        'dense_3_units':[8],                                           
+                                        'dense_3_activation':['relu'], # 8,16, 24
                                         # decoder params to search across
-                                        'dense_4_units':[632],                                        'dense_4_activation':['relu'],
-                                        'dense_5_units':[1644],                                    'dense_5_activation':['relu'],  # 64,128,256
-                                        'dense_6_units':[results_AE_SHAP['x_data'].shape[1]],               'dense_6_activation':['tanh']    
+                                        'dense_4_units':[64],                                        
+                                        'dense_4_activation':['relu'],
+                                        'dense_5_units':[256],                                    
+                                        'dense_5_activation':['relu'],  # 64,128,256
+                                        'dense_6_units':[results_AE_SHAP['x_data'].shape[1]],               
+                                        'dense_6_activation':['sigmoid']    
                                     }
 
     # perform the grid search and return parameters of the best model

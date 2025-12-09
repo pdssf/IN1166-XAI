@@ -54,8 +54,8 @@ def preprocess_chd_dataset(df: pd.DataFrame):
     return X, y
 
 
-def split_dataset(X: pd.DataFrame, y: pd.Series, train_size: float = 0.8, test_size: float = 0.2, random_state: int = 42):
-    """Split the dataset into training, validation, and testing sets.
+def split_dataset(X: pd.DataFrame, y: pd.Series,  test_size: float = 0.2, random_state: int = 42):
+    """Split the dataset into training, and testing sets.
     """
 
     X, X_test, y, y_test = train_test_split(
@@ -92,6 +92,7 @@ def load_and_preprocess_chd() -> dict:
     data['X_test'] = X_test.to_numpy()
     data['Y_test'] = y_test.to_numpy()
     data['scaler'] = scaler
+    data['train_normal_locs'] = np.where(data['Y_train'] == 0)[0]
     data['feature_names'] = list(X_train.columns)
 
     return data
@@ -126,12 +127,14 @@ def AE_anomaly_detection(autoencoder, train_data, test_data, y_test=None):
     
     # Get indices of all test points above the threshold (predicted anomalies)
     pred_anomaly_locs = np.where(mse_test > error_threshold)[0]
-    
+    y_pred = np.zeros(len(test_data),)
+    y_pred[pred_anomaly_locs] = 1
+
+    assert len(y_pred) == len(y_test), "Length of predictions and ground truth do not match."
     # Calculate performance metrics if ground truth labels are provided
     if y_test is not None:
         y_pred = np.zeros(len(test_data))
         y_pred[pred_anomaly_locs] = 1
-        
         performance_summary = compute_performance_stats(y_test, y_pred)
     else:
         performance_summary = None
