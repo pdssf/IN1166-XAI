@@ -23,13 +23,18 @@ pip install -r requirements.txt
 
 ## Como Usar
 
-- Executar 
+Executar 
 
+```bash
 python ./intrusion_detection_ch.py
+```
 
 ou 
 
+```bash
 python ./intrusion_detection_main.py
+```
+
 
 ## Autor
 
