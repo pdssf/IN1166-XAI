@@ -108,30 +108,30 @@ def compute_shap(data_chd, model, results_model):
         # specify the paramters of the grid space to serach, i.e. can use: np.arange(448,800,4).tolist()
     
     results_AE_SHAP['parameters'] = {
-                                        # encoder params to search across
-                                        'dense_1_units':[256],                                   
-                                        'dense_1_activation':['relu'],  # 32,64,128,256
-                                        'dense_2_units':[64],                                 
-                                        'dense_2_activation':['relu'],  # 32,48,64
-                                        'dense_3_units':[8],                                           
-                                        'dense_3_activation':['relu'], # 8,16, 24
-                                        # decoder params to search across
-                                        'dense_4_units':[64],                                        
-                                        'dense_4_activation':['relu'],
-                                        'dense_5_units':[256],                                    
-                                        'dense_5_activation':['relu'],  # 64,128,256
-                                        'dense_6_units':[results_AE_SHAP['x_data'].shape[1]],               
-                                        'dense_6_activation':['sigmoid']    
-                                    }
+                                    # encoder params to search across
+                                    'dense_1_units':[64],                                   
+                                    'dense_1_activation':['relu'],
+                                    'dense_2_units':[32],                                 
+                                    'dense_2_activation':['relu'],
+                                    'dense_3_units':[16],                                           
+                                    'dense_3_activation':['relu'],
+                                    # decoder params to search across
+                                    'dense_4_units':[32],                                        
+                                    'dense_4_activation':['relu'],
+                                    'dense_5_units':[64],                                    
+                                    'dense_5_activation':['relu'],
+                                    'dense_6_units':[results_AE_SHAP['x_data'].shape[1]],               
+                                    'dense_6_activation':['sigmoid']    
+                                }
 
     # perform the grid search and return parameters of the best model
     results_AE_SHAP['grid_search'], results_AE_SHAP['best_params'] = utf.get_hyper_Autoencoder(results_AE_SHAP['parameters'], results_AE_SHAP['x_data'], results_AE_SHAP['val_data'],
-                                                                                            method='exact', num_epochs=10, batch_size=512, AE_type = 'joint')   
+                                                                                            method='exact', num_epochs=10, batch_size=2048, AE_type = 'joint')   
     # Using the best parameters, build and train the final model
     autoencoder_shap = utf.Autoencoder(results_AE_SHAP['x_data'].shape[1], results_AE_SHAP['best_params'][2], results_AE_SHAP['best_params'][3], AE_type='joint') # create the AE model object
 
     early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=1e-4, patience=10, verbose=2, mode='min', restore_best_weights=True)     # set up early stop criteria
-    history_AE_SHAP = autoencoder_shap.full.fit(results_AE_SHAP['x_data'], results_AE_SHAP['x_data'], epochs=1000, batch_size=512, shuffle=True, validation_data=(results_AE_SHAP['val_data'],   
+    history_AE_SHAP = autoencoder_shap.full.fit(results_AE_SHAP['x_data'], results_AE_SHAP['x_data'], epochs=1000, batch_size=2048, shuffle=True, validation_data=(results_AE_SHAP['val_data'],   
                                 results_AE_SHAP['val_data']), verbose=2, callbacks=[early_stop]).history
     # plot the training curve
     plt.plot(history_AE_SHAP["loss"], label="Training Loss")

@@ -221,7 +221,7 @@ class Autoencoder(Model):
         num_units:    numpy array with elements representing num of dense units for each layer
         act_fn:       list with each element corresponding to the activation function of that layer
     """      
-    def __init__(self, x_shape, num_units, act_fn, AE_type='joint', learning_rate=1e-3):
+    def __init__(self, x_shape, num_units, act_fn, AE_type='joint', learning_rate=1e-4):
         super(Autoencoder, self).__init__()
         self.x_shape = x_shape
         self.num_units = num_units
@@ -260,7 +260,7 @@ class Autoencoder(Model):
         if AE_type == 'random':
             self.encoder.trainable = False # if defining a random autoencoder, dont optimise the encoder weights
        
-        self.full.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3), loss='mae')
+        self.full.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), loss='mae')
 
 def get_hyper_Autoencoder(parameters, x_data, val_data=None, method='exact', num_perm=None, num_epochs=20, batch_size=512, AE_type = 'joint'):
     """

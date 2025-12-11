@@ -14,7 +14,7 @@ def read_chd_dataset() -> pd.DataFrame:
         './results_car_hacking_dataset/RPM_dataset_processed.csv'
     ]
     df = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
-    df = df.sample(frac=1, random_state=10).reset_index(drop=True)
+    df = df.sample(frac=0.1, random_state=10).reset_index(drop=True)
     df.drop(columns=['ID_raw'], inplace=True)
     return df
 
